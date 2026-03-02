@@ -84,7 +84,7 @@ async fn list_all_cities() -> Result<(), sqlx::Error> {
     Ok(())
 }
 async fn list_cities(pool: &Pool<MySql>) -> Result<Vec<MySqlRow>, sqlx::Error> {
-    let query_string = format!("SELECT name_of_city FROM city_names"); 
+    let query_string = format!("SELECT name_of_city FROM city_names order by name_of_city asc;"); 
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_string)
         .fetch_all(pool)
         .await?; 
@@ -103,30 +103,19 @@ async fn create_sub_tables() -> Result<(), sqlx::Error> {
         .connect(&database_url)
         .await?;
 
-    let cities = vec![
-        "Berkeley_CA",
-        "Billings_MT",
-        "Bismarck_ND",
-        "Chicago_IL",
-        "Columbus_OH",
-        "Dallas_TX",
-        "Fairbanks_AK",
-        "Houston_TX",
-        "Indianapolis_IN",
-        "Jacksonville_FL",
-        "Los_Angeles_CA" ,
-        "Minneapolis_MN",
-        "Nashville_TN",
-        "New_York_NY",
-        "Oklahoma_OK",
-        "Philadelphia_PA",
-        "Phoenix_AZ",
-        "San_Antonio_TX",
-        "San_Diego_CA",
-        "San_Francisco_CA",
-        "Seattle_WA",
-        "Spokane_WA",
-    ];
+    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities(&pool).await;
+    let mut cities: Vec<String> = Vec::new();
+    
+    match city_list_result {
+        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
+            let city_list = city_list_result.unwrap();
+            for a_city in city_list {
+                let c_name: String = a_city.get("name_of_city");
+                cities.push(c_name);
+            }
+        },
+        Err(e) => eprint!("Cities not found, {} ", e),
+    }   
 
     let prompt_message = "Please select the cities to CREATE sub tables".blue();
     let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
@@ -134,8 +123,8 @@ async fn create_sub_tables() -> Result<(), sqlx::Error> {
         .expect("Failed to select cities");
 
     for the_city in selected_cities {
-        println!("Creating sub tables for city of {0}", the_city.red());
-        create_city_sub_tables(&pool, the_city).await?;    
+        println!("Creating sub tables for city of {0}", the_city.clone().red());
+        create_city_sub_tables(&pool, &the_city).await?;    
     }
     Ok(())
 }   
@@ -193,30 +182,19 @@ async fn drop_sub_tables() -> Result<(), sqlx::Error> {
         .connect(&database_url)
         .await?;
 
-    let cities = vec![
-        "Berkeley_CA",
-        "Billings_MT",
-        "Bismarck_ND",
-        "Chicago_IL",
-        "Columbus_OH",
-        "Dallas_TX",
-        "Fairbanks_AK",
-        "Houston_TX",
-        "Indianapolis_IN",
-        "Jacksonville_FL",
-        "Los_Angeles_CA" ,
-        "Minneapolis_MN",
-        "Nashville_TN",
-        "New_York_NY",
-        "Oklahoma_OK",
-        "Philadelphia_PA",
-        "Phoenix_AZ",
-        "San_Antonio_TX",
-        "San_Diego_CA",
-        "San_Francisco_CA",
-        "Seattle_WA",
-        "Spokane_WA",
-    ];
+    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities(&pool).await;
+    let mut cities: Vec<String> = Vec::new();
+    
+    match city_list_result {
+        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
+            let city_list = city_list_result.unwrap();
+            for a_city in city_list {
+                let c_name: String = a_city.get("name_of_city");
+                cities.push(c_name);
+            }
+        },
+        Err(e) => eprint!("Cities not found, {} ", e),
+    }   
 
     let prompt_message = "Please select the cities to DROP sub tables".blue();
     let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
@@ -224,8 +202,8 @@ async fn drop_sub_tables() -> Result<(), sqlx::Error> {
         .expect("Failed to select cities");
 
     for the_city in selected_cities {
-        println!("Dropping sub tables for city of {0}", the_city.red());
-        drop_city_sub_tables(&pool, the_city).await?;    
+        println!("Dropping sub tables for city of {0}", the_city.clone().red());
+        drop_city_sub_tables(&pool, &the_city).await?;    
     }
     Ok(())
 }   
@@ -252,30 +230,19 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
         .connect(&database_url)
         .await?;
 
-    let cities = vec![
-        "Berkeley_CA",
-        "Billings_MT",
-        "Bismarck_ND",
-        "Chicago_IL",
-        "Columbus_OH",
-        "Dallas_TX",
-        "Fairbanks_AK",
-        "Houston_TX",
-        "Indianapolis_IN",
-        "Jacksonville_FL",
-        "Los_Angeles_CA" ,
-        "Minneapolis_MN",
-        "Nashville_TN",
-        "New_York_NY",
-        "Oklahoma_OK",
-        "Philadelphia_PA",
-        "Phoenix_AZ",
-        "San_Antonio_TX",
-        "San_Diego_CA",
-        "San_Francisco_CA",
-        "Seattle_WA",
-        "Spokane_WA",
-    ];
+    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities(&pool).await;
+    let mut cities: Vec<String> = Vec::new();
+    
+    match city_list_result {
+        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
+            let city_list = city_list_result.unwrap();
+            for a_city in city_list {
+                let c_name: String = a_city.get("name_of_city");
+                cities.push(c_name);
+            }
+        },
+        Err(e) => eprint!("Cities not found, {} ", e),
+    }   
 
     let prompt_message = "Please select the cities to calculate averages for".green();
     let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
@@ -283,12 +250,12 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
         .expect("Failed to select cities");
 
     for the_city in selected_cities {
-        println!("Calculatng sub tables for city of {0}", the_city.red());
+        println!("Calculatng sub tables for city of {0}", the_city.clone().red());
 
         let mut first_year: i32 = 0;
         let mut last_year: i32 = 0;
 
-        let first_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_first_year(&pool, the_city).await;
+        let first_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_first_year(&pool, &the_city).await;
         match first_year_result {
             Ok(_) => { 
                 let first_year_row = &first_year_result.unwrap(); //unwrap the row
@@ -299,7 +266,7 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
             Err(e) => eprintln!("Error executing function: {}", e),
         } 
 
-        let last_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_last_year(&pool, the_city).await;
+        let last_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_last_year(&pool, &the_city).await;
         match last_year_result {
             Ok(_) => { 
                 let last_year_row = &last_year_result.unwrap(); //unwrap the row
@@ -309,9 +276,9 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
             },
             Err(e) => eprintln!("Error executing function: {}", e),
         } 
-        calc_city_month(&pool, the_city, first_year, last_year).await?;    
-        calc_city_fort(&pool, the_city, first_year, last_year).await?;    
-        calc_city_week(&pool, the_city, first_year, last_year).await?;    
+        calc_city_month(&pool, &the_city, first_year, last_year).await?;    
+        calc_city_fort(&pool, &the_city, first_year, last_year).await?;    
+        calc_city_week(&pool, &the_city, first_year, last_year).await?;    
     }
 
     Ok(())
