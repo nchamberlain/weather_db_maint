@@ -226,7 +226,7 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     // Create a connection pool
     let pool: Pool<MySql> = MySqlPoolOptions::new()
-        .max_connections(5) // Set the maximum number of connections
+        .max_connections(25) // Set the maximum number of connections
         .connect(&database_url)
         .await?;
 
@@ -276,9 +276,22 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
             },
             Err(e) => eprintln!("Error executing function: {}", e),
         } 
-        calc_city_month(&pool, &the_city, first_year, last_year).await?;    
-        calc_city_fort(&pool, &the_city, first_year, last_year).await?;    
-        calc_city_week(&pool, &the_city, first_year, last_year).await?;    
+        let month_pool = pool.clone();
+        let month_city = the_city.clone();
+        let month_calc = tokio::spawn( async move {calc_city_month(&month_pool, &month_city, first_year, last_year).await});   
+
+        let fort_pool = pool.clone(); 
+        let fort_city = the_city.clone();
+        let fort_calc = tokio::spawn(async move {calc_city_fort(&fort_pool, &fort_city, first_year, last_year).await});   
+
+        let week_pool = pool.clone();
+        let week_city = the_city.clone(); 
+        let week_calc = tokio::spawn(async move {calc_city_week(&week_pool, &week_city, first_year, last_year).await});    
+
+        let _week_result = week_calc.await;
+        let _fort_result = fort_calc.await;
+        let _month_result = month_calc.await;
+
     }
 
     Ok(())
@@ -286,16 +299,10 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
 
 async fn calc_city_month(pool: &Pool<MySql>, city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_month = format!("{city}_month");
-
-    sqlx::query("set autocommit=0;")
-        .execute(pool)
-        .await
-        .unwrap();
+    println!("Starting monthly calcs for {first_year} thru {last_year}");
+    io::stdout().flush().unwrap(); // force flush now
 
     for the_year in first_year..=last_year {
-        print!("{the_year},");
-        io::stdout().flush().unwrap(); // force flush now
-
         for the_month in 1..=12 {
             let insert_month = format!("INSERT INTO {city_sub_month} (station, tyear, tmonth, tmax, tmin) VALUES 
 ((SELECT station from {city} WHERE tdate LIKE '{the_year}-{the_month:02}%' LIMIT 1),
@@ -306,28 +313,16 @@ async fn calc_city_month(pool: &Pool<MySql>, city: &str, first_year: i32, last_y
             let _result = sqlx::query(&insert_month).execute(pool).await?;
         }
     }
-    sqlx::query("COMMIT;")
-        .execute(pool)
-        .await
-        .unwrap();
-    sqlx::query("set autocommit=1;")
-        .execute(pool)
-        .await
-        .unwrap();
+    println!("Finished monthly calcs for {first_year} thru {last_year}");
+    io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
 async fn calc_city_fort(pool: &Pool<MySql>, city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_fort = format!("{city}_fort"); 
-
-    sqlx::query("set autocommit=0;")
-        .execute(pool)
-        .await
-        .unwrap();
+    println!("Starting fortnightly calcs for {first_year} thru {last_year}");
+    io::stdout().flush().unwrap(); // force flush now
 
     for the_year in first_year..=last_year {
-        print!("{the_year}|");
-        io::stdout().flush().unwrap(); // force flush now
-
         let mut low_fort = String::from("01-01");
         for the_fort in 1..=26 {
             let high_fort = get_next_fort(the_fort-1);
@@ -344,28 +339,16 @@ async fn calc_city_fort(pool: &Pool<MySql>, city: &str, first_year: i32, last_ye
             low_fort = high_fort; //update low fort for next loop
         }
     }
-    sqlx::query("COMMIT;")
-        .execute(pool)
-        .await
-        .unwrap();
-    sqlx::query("set autocommit=1;")
-        .execute(pool)
-        .await
-        .unwrap();
+    println!("Finished fortnight calcs for {first_year} thru {last_year}");
+    io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
 async fn calc_city_week(pool: &Pool<MySql>, city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_week = format!("{city}_week"); 
-
-    sqlx::query("set autocommit=0;")
-        .execute(pool)
-        .await
-        .unwrap();
+    println!("Starting weekly calcs for {first_year} thru {last_year}");
+    io::stdout().flush().unwrap(); // force flush now
 
     for the_year in first_year..=last_year {
-        print!("{the_year}-");
-        io::stdout().flush().unwrap(); // force flush now
-
         let mut low_week = String::from("01-01");
         for the_week in 1..=52 {
             let high_week = get_next_week(the_week-1);
@@ -382,14 +365,8 @@ async fn calc_city_week(pool: &Pool<MySql>, city: &str, first_year: i32, last_ye
             low_week = high_week;            
         }
     }
-    sqlx::query("COMMIT;")
-        .execute(pool)
-        .await
-        .unwrap();
-    sqlx::query("set autocommit=1;")
-        .execute(pool)
-        .await
-        .unwrap();
+    println!("Starting weekly calcs for {first_year} thru {last_year}");
+    io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
 
