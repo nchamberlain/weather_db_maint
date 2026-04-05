@@ -79,8 +79,53 @@ async fn get_db_action() -> Result<(), sqlx::Error>{
     }
     Ok(())
 }
+async fn truncate_sub_tables() -> Result<(), sqlx::Error> {
+    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
+    let mut cities: Vec<String> = Vec::new();
+    
+    match city_list_result {
+        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
+            let city_list = city_list_result.unwrap();
+            for a_city in city_list {
+                let c_name: String = a_city.get("name_of_city");
+                cities.push(c_name);
+            }
+        },
+        Err(e) => eprint!("Cities not found, {} ", e),
+    }   
 
-// #[tokio::main] 
+    let prompt_message = "Please select the cities to TRUNCATE sub tables".blue();
+    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
+        .prompt()
+        .expect("Failed to select cities");
+
+    for the_city in selected_cities {
+        println!("Truncating sub tables for city of {0}", the_city.clone().red());
+        truncate_city_sub_tables(&the_city).await?;    
+    }
+    Ok(())
+}
+async fn truncate_city_sub_tables(city: &str) -> Result<(), sqlx::Error>{
+    let city_sub_month = format!("{city}_month");
+    let city_sub_fort = format!("{city}_fort"); 
+    let city_sub_week = format!("{city}_week"); 
+
+    let truncate_month_stmt = format!("TRUNCATE TABLE {city_sub_month};");
+    let truncate_fort_stmt = format!("TRUNCATE TABLE {city_sub_fort};");
+    let truncate_week_stmt = format!("TRUNCATE TABLE {city_sub_week};");
+
+    let _result = sqlx::query(&truncate_month_stmt)
+        .execute(DB_POOL.get().expect("Database pool not initialized"))
+        .await?;
+    let _result = sqlx::query(&truncate_fort_stmt)
+        .execute(DB_POOL.get().expect("Database pool not initialized"))
+        .await?;
+    let _result = sqlx::query(&truncate_week_stmt)
+        .execute(DB_POOL.get().expect("Database pool not initialized"))
+        .await?;
+
+    Ok(())
+}
 async fn list_all_cities() -> Result<(), sqlx::Error> {
     let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
     match city_list_result {
@@ -104,18 +149,7 @@ async fn list_cities() -> Result<Vec<MySqlRow>, sqlx::Error> {
     Ok(rows)
 }
 
-//#[tokio::main] 
 async fn create_sub_tables() -> Result<(), sqlx::Error> {
-    /*// get the db env info from .env file
-    dotenv().ok();
-    // Set up the database URL from environment variable
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    // Create a connection pool
-    let pool: Pool<MySql> = MySqlPoolOptions::new()
-        .max_connections(5) // Set the maximum number of connections
-        .connect(&database_url)
-        .await?;
-    */
     let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
     let mut cities: Vec<String> = Vec::new();
     
@@ -142,7 +176,7 @@ async fn create_sub_tables() -> Result<(), sqlx::Error> {
     Ok(())
 }   
 
-async fn create_city_sub_tables(/*pool: &Pool<MySql>,*/ city: &str) -> Result<(), sqlx::Error> {
+async fn create_city_sub_tables(city: &str) -> Result<(), sqlx::Error> {
     let city_sub_month = format!("{city}_month");
     let city_sub_fort = format!("{city}_fort"); 
     let city_sub_week = format!("{city}_week"); 
@@ -154,6 +188,8 @@ async fn create_city_sub_tables(/*pool: &Pool<MySql>,*/ city: &str) -> Result<()
   `tmonth` smallint(6) NOT NULL,
   `tmax` smallint(6) DEFAULT NULL,
   `tmin` smallint(6) DEFAULT NULL,
+  `mmax` smallint(6) DEFAULT NULL,
+  `mmin` smallint(6) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci ;"#, city_sub_month);
   let _result = sqlx::query(&create_month_stmt)
@@ -167,6 +203,8 @@ async fn create_city_sub_tables(/*pool: &Pool<MySql>,*/ city: &str) -> Result<()
   `tweek` smallint(6) NOT NULL,
   `tmax` smallint(6) DEFAULT NULL,
   `tmin` smallint(6) DEFAULT NULL,
+  `mmax` smallint(6) DEFAULT NULL,
+  `mmin` smallint(6) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;"#, city_sub_week);
   let _result2 = sqlx::query(&create_week_stmt)
@@ -179,6 +217,8 @@ async fn create_city_sub_tables(/*pool: &Pool<MySql>,*/ city: &str) -> Result<()
   `tfort` smallint(6) NOT NULL,
   `tmax` smallint(6) DEFAULT NULL,
   `tmin` smallint(6) DEFAULT NULL,
+  `mmax` smallint(6) DEFAULT NULL,
+  `mmin` smallint(6) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;"#, city_sub_fort);
   let _result3 = sqlx::query(&create_fort_stmt)
@@ -188,18 +228,7 @@ async fn create_city_sub_tables(/*pool: &Pool<MySql>,*/ city: &str) -> Result<()
     Ok(())
 }
 
-//#[tokio::main] 
 async fn drop_sub_tables() -> Result<(), sqlx::Error> {
-    /*// get the db env info from .env file
-    dotenv().ok();
-    // Set up the database URL from environment variable
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    // Create a connection pool
-    let pool: Pool<MySql> = MySqlPoolOptions::new()
-        .max_connections(5) // Set the maximum number of connections
-        .connect(&database_url)
-        .await?;
-    */
     let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
     let mut cities: Vec<String> = Vec::new();
     
@@ -225,7 +254,7 @@ async fn drop_sub_tables() -> Result<(), sqlx::Error> {
     }
     Ok(())
 }   
-async fn drop_city_sub_tables(/*pool: &Pool<MySql>,*/ city: &str) -> Result<(), sqlx::Error>{
+async fn drop_city_sub_tables(city: &str) -> Result<(), sqlx::Error>{
     let city_sub_month = format!("{city}_month");
     let city_sub_fort = format!("{city}_fort"); 
     let city_sub_week = format!("{city}_week"); 
@@ -238,18 +267,8 @@ async fn drop_city_sub_tables(/*pool: &Pool<MySql>,*/ city: &str) -> Result<(), 
 
     Ok(())
 }
-//#[tokio::main] 
+
 async fn insert_averages() -> Result<(), sqlx::Error> {
-    /*// get the db env info from .env file
-    dotenv().ok();
-    // Set up the database URL from environment variable
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    // Create a connection pool
-    let pool: Pool<MySql> = MySqlPoolOptions::new()
-        .max_connections(25) // Set the maximum number of connections
-        .connect(&database_url)
-        .await?;
-    */
     let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
     let mut cities: Vec<String> = Vec::new();
     
@@ -322,7 +341,7 @@ async fn insert_means_and_avgs() -> Result<(), sqlx::Error> {
     Ok(()) 
 }
 
-async fn calc_city_month(/*pool: &Pool<MySql>,*/ city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
+async fn calc_city_month(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_month = format!("{city}_month");
     println!("Starting monthly calcs for {first_year} thru {last_year}");
     io::stdout().flush().unwrap(); // force flush now
@@ -344,7 +363,7 @@ async fn calc_city_month(/*pool: &Pool<MySql>,*/ city: &str, first_year: i32, la
     io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
-async fn calc_city_fort(/*pool: &Pool<MySql>,*/ city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
+async fn calc_city_fort(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_fort = format!("{city}_fort"); 
     println!("Starting fortnightly calcs for {first_year} thru {last_year}");
     io::stdout().flush().unwrap(); // force flush now
@@ -372,7 +391,7 @@ async fn calc_city_fort(/*pool: &Pool<MySql>,*/ city: &str, first_year: i32, las
     io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
-async fn calc_city_week(/*pool: &Pool<MySql>, */city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
+async fn calc_city_week(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_week = format!("{city}_week"); 
     println!("Starting weekly calcs for {first_year} thru {last_year}");
     io::stdout().flush().unwrap(); // force flush now
@@ -401,7 +420,7 @@ async fn calc_city_week(/*pool: &Pool<MySql>, */city: &str, first_year: i32, las
     Ok(())
 }
 
-async fn get_first_year(/*pool: &Pool<MySql>,*/city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
+async fn get_first_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
     let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate asc limit 1");
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
         .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
@@ -410,7 +429,7 @@ async fn get_first_year(/*pool: &Pool<MySql>,*/city: &str) -> Result<Vec<MySqlRo
     Ok(rows)
 }
 
-async fn get_last_year(/*pool: &Pool<MySql>, */ city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
+async fn get_last_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
     let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate desc limit 1");
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
         .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
