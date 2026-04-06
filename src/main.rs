@@ -47,23 +47,17 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
             .expect("Failed to select a database action");
 
         if select == "List all cities" {
-            println!("Listing all cities...");
             list_all_cities().await.expect("Failed to list all cities");
         } else if select == "Create city sub tables" {
-            println!("Creating city sub tables...");
             create_sub_tables().await.expect("Failed to create city sub tables");
         } else if select == "Truncate city sub tables" {
-            println!("Truncating city sub tables...UNDER CONSTRUCTION");
             truncate_sub_tables().await.expect("Failed to truncate city sub tables");
         } else if select == "Drop city sub tables" {
-            println!("Dropping city sub tables...");
             drop_sub_tables().await.expect("Failed to drop city sub tables");
         } else if select == "Insert Avgs into city sub tables" {
-            println!("Inserting averages into city sub tables...");
             insert_averages().await.expect("Failed to insert averages into city sub tables");
         } else if select == "Insert Means and Avgs into city sub tables" {
-            println!("Inserting means and averages into city sub tables...UNDER CONSTRUCTION");
-            //insert_averages().expect("Failed to insert averages into city sub tables");
+            //println!("Inserting means and averages into city sub tables...UNDER CONSTRUCTION");
             insert_means_and_avgs().await.expect("Failed to insert means and averages into city sub tables");
         } else
         if select == "Exit" {
@@ -74,25 +68,7 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
     Ok(())
 }
 async fn truncate_sub_tables() -> Result<(), sqlx::Error> {
-    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
-    let mut cities: Vec<String> = Vec::new();
-    
-    match city_list_result {
-        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
-            let city_list = city_list_result.unwrap();
-            for a_city in city_list {
-                let c_name: String = a_city.get("name_of_city");
-                cities.push(c_name);
-            }
-        },
-        Err(e) => eprint!("Cities not found, {} ", e),
-    }   
-
-    let prompt_message = "Please select the cities to TRUNCATE sub tables".blue();
-    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
-        .prompt()
-        .expect("Failed to select cities");
-
+    let selected_cities = select_cities("Please select the cities to TRUNCATE sub tables".to_string()).await;
     for the_city in selected_cities {
         println!("Truncating sub tables for city of {0}", the_city.clone().red());
         truncate_city_sub_tables(&the_city).await?;    
@@ -144,25 +120,7 @@ async fn list_cities() -> Result<Vec<MySqlRow>, sqlx::Error> {
 }
 
 async fn create_sub_tables() -> Result<(), sqlx::Error> {
-    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
-    let mut cities: Vec<String> = Vec::new();
-    
-    match city_list_result {
-        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
-            let city_list = city_list_result.unwrap();
-            for a_city in city_list {
-                let c_name: String = a_city.get("name_of_city");
-                cities.push(c_name);
-            }
-        },
-        Err(e) => eprint!("Cities not found, {} ", e),
-    }   
-
-    let prompt_message = "Please select the cities to CREATE sub tables".blue();
-    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
-        .prompt()
-        .expect("Failed to select cities");
-
+    let selected_cities = select_cities("Please select the cities to CREATE sub tables".to_string()).await;
     for the_city in selected_cities {
         println!("Creating sub tables for city of {0}", the_city.clone().red());
         create_city_sub_tables(&the_city).await?;    
@@ -223,25 +181,7 @@ async fn create_city_sub_tables(city: &str) -> Result<(), sqlx::Error> {
 }
 
 async fn drop_sub_tables() -> Result<(), sqlx::Error> {
-    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
-    let mut cities: Vec<String> = Vec::new();
-    
-    match city_list_result {
-        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
-            let city_list = city_list_result.unwrap();
-            for a_city in city_list {
-                let c_name: String = a_city.get("name_of_city");
-                cities.push(c_name);
-            }
-        },
-        Err(e) => eprint!("Cities not found, {} ", e),
-    }   
-
-    let prompt_message = "Please select the cities to DROP sub tables".blue();
-    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
-        .prompt()
-        .expect("Failed to select cities");
-
+    let selected_cities = select_cities("Please select the cities to DROP sub tables".to_string()).await;
     for the_city in selected_cities {
         println!("Dropping sub tables for city of {0}", the_city.clone().red());
         drop_city_sub_tables(&the_city).await?;    
@@ -263,32 +203,14 @@ async fn drop_city_sub_tables(city: &str) -> Result<(), sqlx::Error>{
 }
 
 async fn insert_averages() -> Result<(), sqlx::Error> {
-    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
-    let mut cities: Vec<String> = Vec::new();
-    
-    match city_list_result {
-        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
-            let city_list = city_list_result.unwrap();
-            for a_city in city_list {
-                let c_name: String = a_city.get("name_of_city");
-                cities.push(c_name);
-            }
-        },
-        Err(e) => eprint!("Cities not found, {} ", e),
-    }   
-
-    let prompt_message = "Please select the cities to calculate averages for".green();
-    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
-        .prompt()
-        .expect("Failed to select cities");
-
+    let selected_cities = select_cities("Please select the cities to CALC Averages for".to_string()).await;
     for the_city in selected_cities {
         println!("Calculatng sub tables for city of {0}", the_city.clone().red());
 
         let mut first_year: i32 = 0;
         let mut last_year: i32 = 0;
 
-        let first_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_first_year(/*&pool,*/ &the_city).await;
+        let first_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_first_year(&the_city).await;
         match first_year_result {
             Ok(_) => { 
                 let first_year_row = &first_year_result.unwrap(); //unwrap the row
@@ -336,29 +258,11 @@ struct DailyTemps {
     tmax: Option<i32>,
     tmin: Option<i32>,
 }
-//the types are Option<T> because null values are possible in the database, 
+//the structure types are Option<T> because null values are possible in the database, 
 // and FromRow will return None for those fields if they are null. 
 // This allows us to handle missing data gracefully without causing a panic.
 async fn insert_means_and_avgs() -> Result<(), sqlx::Error> {
-    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
-    let mut cities: Vec<String> = Vec::new();
-    
-    match city_list_result {
-        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
-            let city_list = city_list_result.unwrap();
-            for a_city in city_list {
-                let c_name: String = a_city.get("name_of_city");
-                cities.push(c_name);
-            }
-        },
-        Err(e) => eprint!("Cities not found, {} ", e),
-    }   
-
-    let prompt_message = "Please select the cities to CALC Means and Averages".blue();
-    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
-        .prompt()
-        .expect("Failed to select cities");
-
+    let selected_cities = select_cities("Please select the cities to CALC Means and Averages".to_string()).await;
     for the_city in selected_cities {
         println!("Calclating Means and Averages for city of {0}", the_city.clone().red());
         let first_year: i32 ;
@@ -526,4 +430,25 @@ const WEEKS:[&str; 52] = ["01-08", "01-15", "01-22", "01-29", "02-05", "02-12", 
 
 fn get_next_week(idx: i32) -> String {
     WEEKS[(idx) as usize].to_string()   
+}
+async fn select_cities(message: String) -> Vec<String> {
+    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
+    let mut cities: Vec<String> = Vec::new();
+    
+    match city_list_result {
+        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
+            let city_list = city_list_result.unwrap();
+            for a_city in city_list {
+                let c_name: String = a_city.get("name_of_city");
+                cities.push(c_name);
+            }
+        },
+        Err(e) => eprint!("Cities not found, {} ", e),
+    }   
+
+    let prompt_message = message.green();
+    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
+        .prompt()
+        .expect("Failed to select cities");
+    return selected_cities
 }
