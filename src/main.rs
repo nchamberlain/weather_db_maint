@@ -1,15 +1,15 @@
 use colorize::AnsiColor;
 //use inquire::Select;
-use sqlx::{mysql::{MySqlPoolOptions, MySqlRow}, MySql, Pool, Row};
+use sqlx::{mysql::{MySqlPoolOptions, MySqlRow}, MySql, Pool, Row, FromRow};
 use dotenvy::dotenv;
 use std::env;
 use std::io::{self, Write};
 use std::sync::OnceLock;
 
 static DB_POOL: OnceLock<Pool<MySql>> = OnceLock::new();
-fn get_db_pool() -> &'static Pool<MySql> {
-    DB_POOL.get().expect("Database pool not initialized")
-}
+//fn get_db_pool() -> &'static Pool<MySql> {
+//    DB_POOL.get().expect("Database pool not initialized")
+//}
 static DB_URL: OnceLock<String> = OnceLock::new();
 
 #[tokio::main]
@@ -25,11 +25,11 @@ async fn main() -> Result<(), sqlx::Error> {
         .await?)
         .expect("Failed to initialize database pool");
 
-    let result = get_db_action();
+    let result = get_user_choice();
     Ok((result.await)?)
 }
 
-async fn get_db_action() -> Result<(), sqlx::Error>{
+async fn get_user_choice() -> Result<(), sqlx::Error>{
     let choices = vec![
         "List all cities",
         "Create city sub tables",
@@ -49,13 +49,7 @@ async fn get_db_action() -> Result<(), sqlx::Error>{
         if select == "List all cities" {
             println!("Listing all cities...");
             list_all_cities().await.expect("Failed to list all cities");
-        }/* else if select == "Add new city" {
-            println!("Adding a new city...UNDER CONSTRUCTION");
-            // Add code to add a new city to the database
-        } else if select == "Create city tables" {
-            println!("Creating city tables...UNDER CONSTRUCTION");
-            // Add code to create city tables in the database
-        }*/ else if select == "Create city sub tables" {
+        } else if select == "Create city sub tables" {
             println!("Creating city sub tables...");
             create_sub_tables().await.expect("Failed to create city sub tables");
         } else if select == "Truncate city sub tables" {
@@ -317,15 +311,15 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
         } 
         //let month_pool = pool.clone();
         let month_city = the_city.clone();
-        let month_calc = tokio::spawn( async move {calc_city_month(/*&month_pool,*/ &month_city, first_year, last_year).await});   
+        let month_calc = tokio::spawn( async move {calc_city_month(&month_city, first_year, last_year).await});   
 
         //let fort_pool = pool.clone(); 
         let fort_city = the_city.clone();
-        let fort_calc = tokio::spawn(async move {calc_city_fort(/*&fort_pool, */&fort_city, first_year, last_year).await});   
+        let fort_calc = tokio::spawn(async move {calc_city_fort(&fort_city, first_year, last_year).await});   
 
         //let week_pool = pool.clone();
         let week_city = the_city.clone(); 
-        let week_calc = tokio::spawn(async move {calc_city_week(/*&week_pool,*/ &week_city, first_year, last_year).await});    
+        let week_calc = tokio::spawn(async move {calc_city_week(&week_city, first_year, last_year).await});    
 
         let _week_result = week_calc.await;
         let _fort_result = fort_calc.await;
@@ -336,8 +330,92 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+#[derive(Debug, FromRow)]
+struct DailyTemps {
+    tdate: Option<String>,
+    tmax: Option<i32>,
+    tmin: Option<i32>,
+}
+//the types are Option<T> because null values are possible in the database, 
+// and FromRow will return None for those fields if they are null. 
+// This allows us to handle missing data gracefully without causing a panic.
 async fn insert_means_and_avgs() -> Result<(), sqlx::Error> {
-    println!("This function is under construction. It will calculate means and averages for city sub tables.");
+    let city_list_result: Result<Vec<MySqlRow>, sqlx::Error> = list_cities().await;
+    let mut cities: Vec<String> = Vec::new();
+    
+    match city_list_result {
+        Ok(_) => { //probably only returns Ok if it found something. otherwise it would return err, no empty check
+            let city_list = city_list_result.unwrap();
+            for a_city in city_list {
+                let c_name: String = a_city.get("name_of_city");
+                cities.push(c_name);
+            }
+        },
+        Err(e) => eprint!("Cities not found, {} ", e),
+    }   
+
+    let prompt_message = "Please select the cities to CALC Means and Averages".blue();
+    let selected_cities = inquire::MultiSelect::new(&prompt_message, cities)
+        .prompt()
+        .expect("Failed to select cities");
+
+    for the_city in selected_cities {
+        println!("Calclating Means and Averages for city of {0}", the_city.clone().red());
+        let first_year: i32 ;
+        let last_year: i32 ;
+
+        let first_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_first_year(&the_city).await;
+        match first_year_result {
+            Ok(_) => { 
+                let first_year_row = &first_year_result.unwrap(); //unwrap the row
+                let first_year_str: &str = first_year_row[0].get("tdate"); //get date string, for ex. 2020-09-05
+                first_year = first_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
+            },
+            Err(e) => { first_year = 0; eprintln!("Error executing function: {}", e); },
+        } 
+
+        let last_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_last_year(&the_city).await;
+        match last_year_result {
+            Ok(_) => { 
+                let last_year_row = &last_year_result.unwrap(); //unwrap the row
+                let last_year_str: &str = last_year_row[0].get("tdate"); //get date string, for ex. 2020-11-21
+                last_year = last_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
+            },
+            Err(e) => { last_year = 0; eprintln!("Error executing function: {}", e); },
+        } 
+        println!("First year for {}: {}", the_city, first_year);
+        println!("Last year for {}: {}", the_city, last_year);
+        for the_year in first_year..=last_year {
+            let select_year_stmt = format!("SELECT tdate, tmax, tmin FROM {} WHERE tdate LIKE '{}-%';", the_city, the_year.to_string());
+            //let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&select_year_stmt)
+            //    .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
+            //    .await?;
+            let dtemps: Vec<DailyTemps> = sqlx::query_as(&select_year_stmt)
+                .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
+                .await?;
+            println!("Number of rows for {} in year {}: {}", the_city, the_year, dtemps.len());
+            //println!("Date: {:?}, TMAX: {:?}, TMIN: {:?}", dtemps[0].tdate, dtemps[0].tmax, dtemps[0].tmin);
+            for the_month in 1..=12 {
+                let mtemps: Vec<&DailyTemps> = dtemps.iter()
+                    .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
+                    .clone()
+                    .collect();
+                //println!("\tJanuary rows: {}", mtemps.len());
+                //println!("\tdtemp rows: {}", dtemps.len());
+                let mhigh: i32 = mtemps.iter()
+                    .filter_map(|&temp| temp.tmax) //filter out None values and unwrap Some values
+                    .sum();
+                let mlow: i32 = mtemps.iter()
+                    .filter_map(|&temp| temp.tmin) //filter out None values and unwrap Some values
+                    .sum();                
+                if mtemps.len() > 0 {
+                    //println!("Sum of month: {:02} temps for {}: {}", the_month, the_city, msum);
+                    println!("Avg High/Low for {:02}: {}/({})", the_month, mhigh / mtemps.len() as i32, mlow / mtemps.len() as i32);
+                }
+            }
+        }
+    } // end of the_city in selected_cities loop 
+    //println!("This function is under construction. It will calculate means and averages for city sub tables.");
     Ok(()) 
 }
 
