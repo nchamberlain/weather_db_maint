@@ -5,6 +5,7 @@ use dotenvy::dotenv;
 use std::env;
 use std::io::{self, Write};
 use std::sync::OnceLock;
+use std::cmp::Ordering;  //for calc of median in insert_means_and_avgs
 
 static DB_POOL: OnceLock<Pool<MySql>> = OnceLock::new();
 //fn get_db_pool() -> &'static Pool<MySql> {
@@ -297,24 +298,45 @@ async fn insert_means_and_avgs() -> Result<(), sqlx::Error> {
             let dtemps: Vec<DailyTemps> = sqlx::query_as(&select_year_stmt)
                 .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
                 .await?;
-            println!("Number of rows for {} in year {}: {}", the_city, the_year, dtemps.len());
+            println!("\nNumber of rows for {} in year {}: {}", the_city, the_year, dtemps.len());
             //println!("Date: {:?}, TMAX: {:?}, TMIN: {:?}", dtemps[0].tdate, dtemps[0].tmax, dtemps[0].tmin);
             for the_month in 1..=12 {
+                let mut highs: Vec<i32> = Vec::new();
+                let mut lows: Vec<i32> = Vec::new();
                 let mtemps: Vec<&DailyTemps> = dtemps.iter()
                     .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
                     .clone()
                     .collect();
-                //println!("\tJanuary rows: {}", mtemps.len());
-                //println!("\tdtemp rows: {}", dtemps.len());
-                let mhigh: i32 = mtemps.iter()
-                    .filter_map(|&temp| temp.tmax) //filter out None values and unwrap Some values
-                    .sum();
-                let mlow: i32 = mtemps.iter()
-                    .filter_map(|&temp| temp.tmin) //filter out None values and unwrap Some values
-                    .sum();                
                 if mtemps.len() > 0 {
-                    //println!("Sum of month: {:02} temps for {}: {}", the_month, the_city, msum);
-                    println!("Avg High/Low for {:02}: {}/({})", the_month, mhigh / mtemps.len() as i32, mlow / mtemps.len() as i32);
+                    let mhigh: i32 = mtemps.iter()
+                        .filter_map(|&temp| {
+                            if let Some(tmax) = temp.tmax {
+                                highs.push(tmax);
+                                Some(tmax)
+                            } else {
+                                None
+                            }
+                        })
+                        .sum();
+                    let mlow: i32 = mtemps.iter()
+                        .filter_map(|&temp| {
+                            if let Some(tmin) = temp.tmin {
+                                lows.push(tmin);
+                                Some(tmin)
+                            } else {
+                                None
+                            }
+                        })
+                        .sum();   
+                    let mut mhigh_median: f32 = 333.0;
+                    let mut mlow_median: f32 = 444.0;
+                    if highs.len() > 0 {
+                        mhigh_median = median(&highs).unwrap();
+                    }
+                    if lows.len() > 0 {
+                        mlow_median = median(&lows).unwrap();
+                    }
+                    print!("\t{:02} Avg Hi/Lo: {}/{} medians: {}-{}", the_month, mhigh / mtemps.len() as i32, mlow / mtemps.len() as i32, mhigh_median, mlow_median);
                 }
             }
         }
@@ -451,4 +473,62 @@ async fn select_cities(message: String) -> Vec<String> {
         .prompt()
         .expect("Failed to select cities");
     return selected_cities
+}
+// this code from https://rust-lang-nursery.github.io/rust-cookbook/science/mathematics/statistics.html
+fn partition(data: &[i32]) -> Option<(Vec<i32>, i32, Vec<i32>)> {
+    match data.len() {
+        0 => None,
+        _ => {
+            let (pivot_slice, tail) = data.split_at(1);
+            let pivot = pivot_slice[0];
+            let (left, right) = tail.iter()
+                .fold((vec![], vec![]), |mut splits, next| {
+                    {
+                        //let (ref mut left, ref mut right) = &mut splits;
+                        let (left, right) = &mut splits;
+                        if next < &pivot {
+                            left.push(*next);
+                        } else {
+                            right.push(*next);
+                        }
+                    }
+                    splits
+                });
+
+            Some((left, pivot, right))
+        }
+    }
+}
+
+fn select(data: &[i32], k: usize) -> Option<i32> {
+    let part = partition(data);
+
+    match part {
+        None => None,
+        Some((left, pivot, right)) => {
+            let pivot_idx = left.len();
+
+            match pivot_idx.cmp(&k) {
+                Ordering::Equal => Some(pivot),
+                Ordering::Greater => select(&left, k),
+                Ordering::Less => select(&right, k - (pivot_idx + 1)),
+            }
+        },
+    }
+}
+
+fn median(data: &[i32]) -> Option<f32> {
+    let size = data.len();
+    match size {
+        even if even % 2 == 0 => {
+            let fst_med = select(data, (even / 2) - 1);
+            let snd_med = select(data, even / 2);
+            //println!("\nfst {} snd {}", fst_med.unwrap(), snd_med.unwrap());
+            match (fst_med, snd_med) {
+                (Some(fst), Some(snd)) => Some((fst + snd) as f32 / 2.0),
+                _ => None
+            }
+        },
+        odd => select(data, odd / 2).map(|x| x as f32)
+    }
 }
