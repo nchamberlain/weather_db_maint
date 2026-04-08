@@ -59,7 +59,7 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
             insert_averages().await.expect("Failed to insert averages into city sub tables");
         } else if select == "Insert Means and Avgs into city sub tables" {
             //println!("Inserting means and averages into city sub tables...UNDER CONSTRUCTION");
-            insert_means_and_avgs().await.expect("Failed to insert means and averages into city sub tables");
+            insert_medians_and_avgs().await.expect("Failed to insert means and averages into city sub tables");
         } else
         if select == "Exit" {
             println!("Exiting the program. Goodbye!");
@@ -255,6 +255,7 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
 
 #[derive(Debug, FromRow)]
 struct DailyTemps {
+    station: String,
     tdate: Option<String>,
     tmax: Option<i32>,
     tmin: Option<i32>,
@@ -262,7 +263,17 @@ struct DailyTemps {
 //the structure types are Option<T> because null values are possible in the database, 
 // and FromRow will return None for those fields if they are null. 
 // This allows us to handle missing data gracefully without causing a panic.
-async fn insert_means_and_avgs() -> Result<(), sqlx::Error> {
+#[derive(Debug, FromRow)]
+struct CalculatedTemps {
+    station: String,
+    tyear: i32,
+    tperiod: i32,
+    tmax: i32,
+    tmin: i32,
+    mmax: i32,
+    mmin: i32,
+}
+async fn insert_medians_and_avgs() -> Result<(), sqlx::Error> {
     let selected_cities = select_cities("Please select the cities to CALC Means and Averages".to_string()).await;
     for the_city in selected_cities {
         println!("Calclating Means and Averages for city of {0}", the_city.clone().red());
@@ -291,15 +302,18 @@ async fn insert_means_and_avgs() -> Result<(), sqlx::Error> {
         println!("First year for {}: {}", the_city, first_year);
         println!("Last year for {}: {}", the_city, last_year);
         for the_year in first_year..=last_year {
-            let select_year_stmt = format!("SELECT tdate, tmax, tmin FROM {} WHERE tdate LIKE '{}-%';", the_city, the_year.to_string());
+            let select_year_stmt = format!("SELECT station, tdate, tmax, tmin FROM {} WHERE tdate LIKE '{}-%';", the_city, the_year.to_string());
             //let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&select_year_stmt)
             //    .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
             //    .await?;
             let dtemps: Vec<DailyTemps> = sqlx::query_as(&select_year_stmt)
                 .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
                 .await?;
-            println!("\nNumber of rows for {} in year {}: {}", the_city, the_year, dtemps.len());
+            //println!("\nNumber of rows for {} in year {}: {}", the_city, the_year, dtemps.len());
             //println!("Date: {:?}, TMAX: {:?}, TMIN: {:?}", dtemps[0].tdate, dtemps[0].tmax, dtemps[0].tmin);
+
+            let mut ctemps: Vec<CalculatedTemps> = Vec::new();
+
             for the_month in 1..=12 {
                 let mut highs: Vec<i32> = Vec::new();
                 let mut lows: Vec<i32> = Vec::new();
@@ -336,9 +350,38 @@ async fn insert_means_and_avgs() -> Result<(), sqlx::Error> {
                     if lows.len() > 0 {
                         mlow_median = median(&lows).unwrap();
                     }
-                    print!("\t{:02} Avg Hi/Lo: {}/{} medians: {}-{}", the_month, mhigh / mtemps.len() as i32, mlow / mtemps.len() as i32, mhigh_median, mlow_median);
+                    ctemps.push(CalculatedTemps {
+                        station: mtemps[0].station.clone(),
+                        tyear: the_year,
+                        tperiod: the_month,
+                        tmax: mhigh / mtemps.len() as i32,
+                        tmin: mlow / mtemps.len() as i32,
+                        mmax: mhigh_median as i32,
+                        mmin: mlow_median as i32,
+                    });
+                    //print!("\t{:02} Avg Hi/Lo: {}/{} medians: {}-{}", the_month, mhigh / mtemps.len() as i32, mlow / mtemps.len() as i32, mhigh_median, mlow_median);
+                } else {
+                    ctemps.push(CalculatedTemps {
+                        station: "None".to_string(),
+                        tyear: the_year,
+                        tperiod: the_month,
+                        tmax: 333,
+                        tmin: 444,
+                        mmax: 333,
+                        mmin: 444,
+                    });
+                    //print!("\t{:02} Avg Hi/Lo: {}/{} medians: {}-{}", the_month, 333, 444, 333, 444);
                 }
+            } // end of the_month loop
+            let mut insert_string = " ".to_string();
+            for c in ctemps {
+                insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
             }
+            //create a bulk insert statement
+            let insert_stmt = format!("INSERT INTO {}_month (station, tyear, tmonth, tmax, tmin, mmax, mmin) VALUES {};", the_city, insert_string.trim_end_matches(','));
+            let _result = sqlx::query(&insert_stmt)
+                .execute(DB_POOL.get().expect("Database pool not initialized"))
+                .await?;    
         }
     } // end of the_city in selected_cities loop 
     //println!("This function is under construction. It will calculate means and averages for city sub tables.");
