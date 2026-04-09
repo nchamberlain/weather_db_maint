@@ -3,7 +3,7 @@ use colorize::AnsiColor;
 use sqlx::{mysql::{MySqlPoolOptions, MySqlRow}, MySql, Pool, Row, FromRow};
 use dotenvy::dotenv;
 use std::env;
-use std::io::{self, Write};
+//use std::io::{self, Write};
 use std::sync::OnceLock;
 use std::cmp::Ordering;  //for calc of median in insert_means_and_avgs
 
@@ -36,7 +36,7 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
         "Create city sub tables",
         "Truncate city sub tables",
         "Drop city sub tables",
-        "Insert Avgs into city sub tables",
+        //"Insert Avgs into city sub tables",
         "Insert Means and Avgs into city sub tables",
         "Exit",
     ];
@@ -55,8 +55,8 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
             truncate_sub_tables().await.expect("Failed to truncate city sub tables");
         } else if select == "Drop city sub tables" {
             drop_sub_tables().await.expect("Failed to drop city sub tables");
-        } else if select == "Insert Avgs into city sub tables" {
-            insert_averages().await.expect("Failed to insert averages into city sub tables");
+        //} else if select == "Insert Avgs into city sub tables" {
+         //   insert_averages().await.expect("Failed to insert averages into city sub tables");
         } else if select == "Insert Means and Avgs into city sub tables" {
             //println!("Inserting means and averages into city sub tables...UNDER CONSTRUCTION");
             insert_medians_and_avgs().await.expect("Failed to insert means and averages into city sub tables");
@@ -203,7 +203,7 @@ async fn drop_city_sub_tables(city: &str) -> Result<(), sqlx::Error>{
     Ok(())
 }
 
-async fn insert_averages() -> Result<(), sqlx::Error> {
+/*async fn insert_averages() -> Result<(), sqlx::Error> {
     let selected_cities = select_cities("Please select the cities to CALC Averages for".to_string()).await;
     for the_city in selected_cities {
         println!("Calculatng sub tables for city of {0}", the_city.clone().red());
@@ -229,7 +229,7 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
 
     Ok(())
 }
-
+*/
 #[derive(Debug, FromRow, Clone)]
 struct DailyTemps {
     station: String,
@@ -354,11 +354,19 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
 }
 async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year: i32, the_city: &str) -> Result<(), sqlx::Error> {
     let mut cftemps: Vec<CalculatedTemps> = Vec::new(); //prepare a vector to hold the calculated monthly temps for the year
-    for the_month in 1..=12 {
+
+    let mut low_fort = String::from("01-01");
+
+    for the_fort in 1..=26 {
         let mut highs: Vec<i32> = Vec::new();
         let mut lows: Vec<i32> = Vec::new();
+
+        let high_fort = get_next_fort(the_fort-1);
+        let low_date= format!("{}-{}", the_year, low_fort);
+        let high_date= format!("{}-{}", the_year, high_fort);
+
         let mtemps: Vec<&DailyTemps> = daily_temps.iter()
-            .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
+            .filter(|&fort| fort.tdate.as_ref().unwrap() >= &low_date && fort.tdate.as_ref().unwrap() < &high_date)
             .clone()
             .collect();
         if mtemps.len() > 0 {
@@ -393,7 +401,7 @@ async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
             cftemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
-                tperiod: the_month,
+                tperiod: the_fort,
                 tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
                 tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
                 mmax: mhigh_median as i32,
@@ -403,13 +411,14 @@ async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
             cftemps.push(CalculatedTemps {
                 station: "None".to_string(),
                 tyear: the_year,
-                tperiod: the_month,
+                tperiod: the_fort,
                 tmax: 333,
                 tmin: 222,
                 mmax: 555,
                 mmin: 444,
             });
         }
+        low_fort = high_fort; //update low fort for next loop
     } // end of the_month loop
     let mut insert_string = " ".to_string();
     for c in cftemps {
@@ -424,11 +433,19 @@ async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
 }
 async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year: i32, the_city: &str) -> Result<(), sqlx::Error> {
     let mut cwtemps: Vec<CalculatedTemps> = Vec::new(); //prepare a vector to hold the calculated weekly temps for the year
-    for the_month in 1..=12 {
+
+    let mut low_week = String::from("01-01");
+
+    for the_week in 1..=52 {
         let mut highs: Vec<i32> = Vec::new();
         let mut lows: Vec<i32> = Vec::new();
+
+        let high_week = get_next_week(the_week-1);
+        let low_date= format!("{}-{}", the_year, low_week);
+        let high_date= format!("{}-{}", the_year, high_week);
+
         let mtemps: Vec<&DailyTemps> = daily_temps.iter()
-            .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
+            .filter(|&week| week.tdate.as_ref().unwrap() >= &low_date && week.tdate.as_ref().unwrap() < &high_date)
             .clone()
             .collect();
         if mtemps.len() > 0 {
@@ -463,7 +480,7 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
             cwtemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
-                tperiod: the_month,
+                tperiod: the_week,
                 tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
                 tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
                 mmax: mhigh_median as i32,
@@ -473,14 +490,15 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
             cwtemps.push(CalculatedTemps {
                 station: "None".to_string(),
                 tyear: the_year,
-                tperiod: the_month,
+                tperiod: the_week,
                 tmax: 333,
                 tmin: 222,
                 mmax: 555,
                 mmin: 444,
             });
         }
-    } // end of the_month loop
+        low_week = high_week;
+    } // end of the_week loop, this year's weekly results collected into cwtemps vector
     let mut insert_string = " ".to_string();
     for c in cwtemps {
         insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
@@ -492,7 +510,7 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
         .await;    
     Ok(())
 }
-async fn calc_city_month(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
+/*async fn calc_city_month(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_month = format!("{city}_month");
     println!("Starting monthly calcs for {first_year} thru {last_year}");
     io::stdout().flush().unwrap(); // force flush now
@@ -514,6 +532,7 @@ async fn calc_city_month(city: &str, first_year: i32, last_year: i32) -> Result<
     io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
+//WARNING: this fn doesn't calc correctly because BETWEEN low_date and high_date is INCLUSIVE so high_date is included.
 async fn calc_city_fort(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_fort = format!("{city}_fort"); 
     println!("Starting fortnightly calcs for {first_year} thru {last_year}");
@@ -542,6 +561,7 @@ async fn calc_city_fort(city: &str, first_year: i32, last_year: i32) -> Result<(
     io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
+//WARNING: this fn doesn't calc correctly because BETWEEN low_date and high_date is INCLUSIVE so high_date is include.
 async fn calc_city_week(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_week = format!("{city}_week"); 
     println!("Starting weekly calcs for {first_year} thru {last_year}");
@@ -570,7 +590,7 @@ async fn calc_city_week(city: &str, first_year: i32, last_year: i32) -> Result<(
     io::stdout().flush().unwrap(); // force flush now
     Ok(())
 }
-
+*/
 /*async fn get_first_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
     let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate asc limit 1");
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
