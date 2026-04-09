@@ -208,39 +208,16 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
     for the_city in selected_cities {
         println!("Calculatng sub tables for city of {0}", the_city.clone().red());
 
-        let mut first_year: i32 = 0;
-        let mut last_year: i32 = 0;
+        let  first_year: i32 = get_1st_year(&the_city).await;
+        let last_year: i32 = get_end_year(&the_city).await;
+        println!("From {} to {}", first_year, last_year);
 
-        let first_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_first_year(&the_city).await;
-        match first_year_result {
-            Ok(_) => { 
-                let first_year_row = &first_year_result.unwrap(); //unwrap the row
-                let first_year_str: &str = first_year_row[0].get("tdate"); //get date string, for ex. 2020-09-05
-                first_year = first_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
-                println!("First year for {}: {}", the_city, first_year);
-            },
-            Err(e) => eprintln!("Error executing function: {}", e),
-        } 
-
-        let last_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_last_year(&the_city).await;
-        match last_year_result {
-            Ok(_) => { 
-                let last_year_row = &last_year_result.unwrap(); //unwrap the row
-                let last_year_str: &str = last_year_row[0].get("tdate"); //get date string, for ex. 2020-11-21
-                last_year = last_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
-                println!("Last year for {}: {}", the_city, last_year);
-            },
-            Err(e) => eprintln!("Error executing function: {}", e),
-        } 
-        //let month_pool = pool.clone();
         let month_city = the_city.clone();
         let month_calc = tokio::spawn( async move {calc_city_month(&month_city, first_year, last_year).await});   
 
-        //let fort_pool = pool.clone(); 
         let fort_city = the_city.clone();
         let fort_calc = tokio::spawn(async move {calc_city_fort(&fort_city, first_year, last_year).await});   
 
-        //let week_pool = pool.clone();
         let week_city = the_city.clone(); 
         let week_calc = tokio::spawn(async move {calc_city_week(&week_city, first_year, last_year).await});    
 
@@ -253,7 +230,7 @@ async fn insert_averages() -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Clone)]
 struct DailyTemps {
     station: String,
     tdate: Option<String>,
@@ -276,118 +253,245 @@ struct CalculatedTemps {
 async fn insert_medians_and_avgs() -> Result<(), sqlx::Error> {
     let selected_cities = select_cities("Please select the cities to CALC Means and Averages".to_string()).await;
     for the_city in selected_cities {
-        println!("Calclating Means and Averages for city of {0}", the_city.clone().red());
-        let first_year: i32 ;
-        let last_year: i32 ;
+        println!("Calclating Medians and Averages for the city of {0}", the_city.clone().red());
+        let first_year: i32 = get_1st_year(&the_city).await;
+        let last_year: i32 = get_end_year(&the_city).await;
+        println!("From {} to {}", first_year, last_year);
 
-        let first_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_first_year(&the_city).await;
-        match first_year_result {
-            Ok(_) => { 
-                let first_year_row = &first_year_result.unwrap(); //unwrap the row
-                let first_year_str: &str = first_year_row[0].get("tdate"); //get date string, for ex. 2020-09-05
-                first_year = first_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
-            },
-            Err(e) => { first_year = 0; eprintln!("Error executing function: {}", e); },
-        } 
-
-        let last_year_result: Result<Vec<sqlx::mysql::MySqlRow>, sqlx::Error> = get_last_year(&the_city).await;
-        match last_year_result {
-            Ok(_) => { 
-                let last_year_row = &last_year_result.unwrap(); //unwrap the row
-                let last_year_str: &str = last_year_row[0].get("tdate"); //get date string, for ex. 2020-11-21
-                last_year = last_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
-            },
-            Err(e) => { last_year = 0; eprintln!("Error executing function: {}", e); },
-        } 
-        println!("First year for {}: {}", the_city, first_year);
-        println!("Last year for {}: {}", the_city, last_year);
         for the_year in first_year..=last_year {
-            let select_year_stmt = format!("SELECT station, tdate, tmax, tmin FROM {} WHERE tdate LIKE '{}-%';", the_city, the_year.to_string());
-            //let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&select_year_stmt)
-            //    .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
-            //    .await?;
-            let dtemps: Vec<DailyTemps> = sqlx::query_as(&select_year_stmt)
+            let select_year_stmt = format!("SELECT station, tdate, tmax, tmin FROM {} WHERE tdate LIKE '{}-%';", the_city, the_year);
+            let dtemps: Vec<DailyTemps> = sqlx::query_as(&select_year_stmt) //build a vector of DailyTemps structs for the year
                 .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
                 .await?;
-            //println!("\nNumber of rows for {} in year {}: {}", the_city, the_year, dtemps.len());
-            //println!("Date: {:?}, TMAX: {:?}, TMIN: {:?}", dtemps[0].tdate, dtemps[0].tmax, dtemps[0].tmin);
+            let month_city = the_city.clone();
+            let month_temps = dtemps.clone();
+            let month_calc = tokio::spawn(async move {insert_monthly_medians_and_avgs(&month_temps, the_year, &month_city).await});
 
-            let mut ctemps: Vec<CalculatedTemps> = Vec::new();
+            let fort_city = the_city.clone();
+            let fort_temps = dtemps.clone();
+            let fort_calc = tokio::spawn(async move {insert_fortly_medians_and_avgs(&fort_temps, the_year, &fort_city).await});
 
-            for the_month in 1..=12 {
-                let mut highs: Vec<i32> = Vec::new();
-                let mut lows: Vec<i32> = Vec::new();
-                let mtemps: Vec<&DailyTemps> = dtemps.iter()
-                    .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
-                    .clone()
-                    .collect();
-                if mtemps.len() > 0 {
-                    let mhigh: i32 = mtemps.iter()
-                        .filter_map(|&temp| {
-                            if let Some(tmax) = temp.tmax {
-                                highs.push(tmax);
-                                Some(tmax)
-                            } else {
-                                None
-                            }
-                        })
-                        .sum();
-                    let mlow: i32 = mtemps.iter()
-                        .filter_map(|&temp| {
-                            if let Some(tmin) = temp.tmin {
-                                lows.push(tmin);
-                                Some(tmin)
-                            } else {
-                                None
-                            }
-                        })
-                        .sum();   
-                    let mut mhigh_median: f32 = 333.0;
-                    let mut mlow_median: f32 = 444.0;
-                    if highs.len() > 0 {
-                        mhigh_median = median(&highs).unwrap();
-                    }
-                    if lows.len() > 0 {
-                        mlow_median = median(&lows).unwrap();
-                    }
-                    ctemps.push(CalculatedTemps {
-                        station: mtemps[0].station.clone(),
-                        tyear: the_year,
-                        tperiod: the_month,
-                        tmax: mhigh / mtemps.len() as i32,
-                        tmin: mlow / mtemps.len() as i32,
-                        mmax: mhigh_median as i32,
-                        mmin: mlow_median as i32,
-                    });
-                    //print!("\t{:02} Avg Hi/Lo: {}/{} medians: {}-{}", the_month, mhigh / mtemps.len() as i32, mlow / mtemps.len() as i32, mhigh_median, mlow_median);
-                } else {
-                    ctemps.push(CalculatedTemps {
-                        station: "None".to_string(),
-                        tyear: the_year,
-                        tperiod: the_month,
-                        tmax: 333,
-                        tmin: 444,
-                        mmax: 333,
-                        mmin: 444,
-                    });
-                    //print!("\t{:02} Avg Hi/Lo: {}/{} medians: {}-{}", the_month, 333, 444, 333, 444);
-                }
-            } // end of the_month loop
-            let mut insert_string = " ".to_string();
-            for c in ctemps {
-                insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
-            }
-            //create a bulk insert statement
-            let insert_stmt = format!("INSERT INTO {}_month (station, tyear, tmonth, tmax, tmin, mmax, mmin) VALUES {};", the_city, insert_string.trim_end_matches(','));
-            let _result = sqlx::query(&insert_stmt)
-                .execute(DB_POOL.get().expect("Database pool not initialized"))
-                .await?;    
+            let week_city = the_city.clone();
+            let week_temps = dtemps.clone();
+            let week_calc = tokio::spawn(async move {insert_weekly_medians_and_avgs(&week_temps, the_year, &week_city).await});
+
+            let _month_result = month_calc.await;
+            let _fort_result = fort_calc.await;
+            let _week_result = week_calc.await;
         }
-    } // end of the_city in selected_cities loop 
-    //println!("This function is under construction. It will calculate means and averages for city sub tables.");
+    } // end of the_city in selected_cities 
     Ok(()) 
 }
-
+async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year: i32, the_city: &str) -> Result<(), sqlx::Error> {
+    let mut cmtemps: Vec<CalculatedTemps> = Vec::new(); //prepare a vector to hold the calculated monthly temps for the year
+    for the_month in 1..=12 {
+        let mut highs: Vec<i32> = Vec::new();
+        let mut lows: Vec<i32> = Vec::new();
+        let mtemps: Vec<&DailyTemps> = daily_temps.iter()
+            .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
+            .clone()
+            .collect();
+        if mtemps.len() > 0 {
+            let mhigh: i32 = mtemps.iter()
+                .filter_map(|&temp| {
+                    if let Some(tmax) = temp.tmax {
+                        highs.push(tmax);
+                        Some(tmax)
+                    } else {
+                        None
+                    }
+                })
+                .sum();
+            let mlow: i32 = mtemps.iter()
+                .filter_map(|&temp| {
+                    if let Some(tmin) = temp.tmin {
+                        lows.push(tmin);
+                        Some(tmin)
+                    } else {
+                        None
+                    }
+                })
+                .sum();   
+            let mut mhigh_median: f32 = 333.0;
+            let mut mlow_median: f32 = 444.0;
+            if highs.len() > 0 {
+                mhigh_median = median(&highs).unwrap();
+            }
+            if lows.len() > 0 {
+                mlow_median = median(&lows).unwrap();
+            }
+            cmtemps.push(CalculatedTemps {
+                station: mtemps[0].station.clone(),
+                tyear: the_year,
+                tperiod: the_month,
+                tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
+                tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
+                mmax: mhigh_median as i32,
+                mmin: mlow_median as i32,
+            });
+        } else {
+            cmtemps.push(CalculatedTemps {
+                station: "None".to_string(),
+                tyear: the_year,
+                tperiod: the_month,
+                tmax: 333,
+                tmin: 222,
+                mmax: 555,
+                mmin: 444,
+            });
+        }
+    } // end of the_month loop
+    let mut insert_string = " ".to_string();
+    for c in cmtemps {
+        insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
+    }
+    //create a bulk insert statement
+    let insert_stmt = format!("INSERT INTO {}_month (station, tyear, tmonth, tmax, tmin, mmax, mmin) VALUES {};", the_city, insert_string.trim_end_matches(','));
+    let _result = sqlx::query(&insert_stmt)
+        .execute(DB_POOL.get().expect("Database pool not initialized"))
+        .await;    
+    Ok(())
+}
+async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year: i32, the_city: &str) -> Result<(), sqlx::Error> {
+    let mut cftemps: Vec<CalculatedTemps> = Vec::new(); //prepare a vector to hold the calculated monthly temps for the year
+    for the_month in 1..=12 {
+        let mut highs: Vec<i32> = Vec::new();
+        let mut lows: Vec<i32> = Vec::new();
+        let mtemps: Vec<&DailyTemps> = daily_temps.iter()
+            .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
+            .clone()
+            .collect();
+        if mtemps.len() > 0 {
+            let mhigh: i32 = mtemps.iter()
+                .filter_map(|&temp| {
+                    if let Some(tmax) = temp.tmax {
+                        highs.push(tmax);
+                        Some(tmax)
+                    } else {
+                        None
+                    }
+                })
+                .sum();
+            let mlow: i32 = mtemps.iter()
+                .filter_map(|&temp| {
+                    if let Some(tmin) = temp.tmin {
+                        lows.push(tmin);
+                        Some(tmin)
+                    } else {
+                        None
+                    }
+                })
+                .sum();   
+            let mut mhigh_median: f32 = 555.0;
+            let mut mlow_median: f32 = 444.0;
+            if highs.len() > 0 {
+                mhigh_median = median(&highs).unwrap();
+            }
+            if lows.len() > 0 {
+                mlow_median = median(&lows).unwrap();
+            }
+            cftemps.push(CalculatedTemps {
+                station: mtemps[0].station.clone(),
+                tyear: the_year,
+                tperiod: the_month,
+                tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
+                tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
+                mmax: mhigh_median as i32,
+                mmin: mlow_median as i32,
+            });
+        } else {
+            cftemps.push(CalculatedTemps {
+                station: "None".to_string(),
+                tyear: the_year,
+                tperiod: the_month,
+                tmax: 333,
+                tmin: 222,
+                mmax: 555,
+                mmin: 444,
+            });
+        }
+    } // end of the_month loop
+    let mut insert_string = " ".to_string();
+    for c in cftemps {
+        insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
+    }
+    //create a bulk insert statement
+    let insert_stmt = format!("INSERT INTO {}_fort (station, tyear, tfort, tmax, tmin, mmax, mmin) VALUES {};", the_city, insert_string.trim_end_matches(','));
+    let _result = sqlx::query(&insert_stmt)
+        .execute(DB_POOL.get().expect("Database pool not initialized"))
+        .await;    
+    Ok(())
+}
+async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year: i32, the_city: &str) -> Result<(), sqlx::Error> {
+    let mut cwtemps: Vec<CalculatedTemps> = Vec::new(); //prepare a vector to hold the calculated weekly temps for the year
+    for the_month in 1..=12 {
+        let mut highs: Vec<i32> = Vec::new();
+        let mut lows: Vec<i32> = Vec::new();
+        let mtemps: Vec<&DailyTemps> = daily_temps.iter()
+            .filter(|&month| month.tdate.as_ref().unwrap()[5..7] == format!("{:02}", the_month))
+            .clone()
+            .collect();
+        if mtemps.len() > 0 {
+            let mhigh: i32 = mtemps.iter()
+                .filter_map(|&temp| {
+                    if let Some(tmax) = temp.tmax {
+                        highs.push(tmax);
+                        Some(tmax)
+                    } else {
+                        None
+                    }
+                })
+                .sum();
+            let mlow: i32 = mtemps.iter()
+                .filter_map(|&temp| {
+                    if let Some(tmin) = temp.tmin {
+                        lows.push(tmin);
+                        Some(tmin)
+                    } else {
+                        None
+                    }
+                })
+                .sum();   
+            let mut mhigh_median: f32 = 333.0;
+            let mut mlow_median: f32 = 444.0;
+            if highs.len() > 0 {
+                mhigh_median = median(&highs).unwrap();
+            }
+            if lows.len() > 0 {
+                mlow_median = median(&lows).unwrap();
+            }
+            cwtemps.push(CalculatedTemps {
+                station: mtemps[0].station.clone(),
+                tyear: the_year,
+                tperiod: the_month,
+                tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
+                tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
+                mmax: mhigh_median as i32,
+                mmin: mlow_median as i32,
+            });
+        } else {
+            cwtemps.push(CalculatedTemps {
+                station: "None".to_string(),
+                tyear: the_year,
+                tperiod: the_month,
+                tmax: 333,
+                tmin: 222,
+                mmax: 555,
+                mmin: 444,
+            });
+        }
+    } // end of the_month loop
+    let mut insert_string = " ".to_string();
+    for c in cwtemps {
+        insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
+    }
+    //create a bulk insert statement
+    let insert_stmt = format!("INSERT INTO {}_week (station, tyear, tweek, tmax, tmin, mmax, mmin) VALUES {};", the_city, insert_string.trim_end_matches(','));
+    let _result = sqlx::query(&insert_stmt)
+        .execute(DB_POOL.get().expect("Database pool not initialized"))
+        .await;    
+    Ok(())
+}
 async fn calc_city_month(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
     let city_sub_month = format!("{city}_month");
     println!("Starting monthly calcs for {first_year} thru {last_year}");
@@ -467,22 +571,49 @@ async fn calc_city_week(city: &str, first_year: i32, last_year: i32) -> Result<(
     Ok(())
 }
 
-async fn get_first_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
+/*async fn get_first_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
     let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate asc limit 1");
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
         .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
         .await?; 
-    //println!("Number of First Year Rows found: {}", rows.len());
     Ok(rows)
+}*/
+async fn get_1st_year(city: &str) -> i32{
+    let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate asc limit 1");
+    let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
+        .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
+        .await.expect("Failed to fetch first year");
+    match rows.len() {
+         0 => { eprintln!("No data found for city: {}", city); return 0; },
+         _ => {
+            let first_year_row = &rows[0]; //unwrap the row
+            let first_year_str: &str = first_year_row.get("tdate"); //get date string, for ex. 2020-09-05
+            let first_year = first_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
+            return first_year;
+        }
+    }
 }
-
-async fn get_last_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
+/*async fn get_last_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
     let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate desc limit 1");
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
         .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
         .await?; // had to make this function return a Result to use the ? operator
-    //println!("Number of Last Year Rows found: {}", rows.len());
     Ok(rows)
+}*/
+async fn get_end_year(city: &str) -> i32 {
+    let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate desc limit 1");
+    let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
+        .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
+        .await.expect("Failed to fetch last year");
+    match rows.len() {
+         0 => { eprintln!("No data found for city: {}", city); return 0; },
+         _ => {
+            let last_year_row = &rows[0]; //unwrap the row
+            let last_year_str: &str = last_year_row.get("tdate"); //get date string, for ex. 2020-11-21
+            let last_year = last_year_str[0..4].parse().unwrap();  //parse first 4 digits as an int
+            return last_year;
+        }
+    }
 }
 
 const FORTS:[&str; 26] = ["01-15", "01-29", "02-12", "02-26", "03-12", "03-26", "04-09", "04-23", "05-07", "05-21", "06-04", "06-18", "07-02", "07-16", "07-30", "08-13", "08-27", "09-10", "09-24", "10-08", "10-22", "11-05", "11-19", "12-03", "12-17", "12-32"];
