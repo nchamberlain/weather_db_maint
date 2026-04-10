@@ -5,12 +5,9 @@ use dotenvy::dotenv;
 use std::env;
 //use std::io::{self, Write};
 use std::sync::OnceLock;
-use std::cmp::Ordering;  //for calc of median in insert_means_and_avgs
+use std::cmp::Ordering;  //for calc of median in insert_medians_and_avgs
 
 static DB_POOL: OnceLock<Pool<MySql>> = OnceLock::new();
-//fn get_db_pool() -> &'static Pool<MySql> {
-//    DB_POOL.get().expect("Database pool not initialized")
-//}
 static DB_URL: OnceLock<String> = OnceLock::new();
 
 #[tokio::main]
@@ -36,8 +33,7 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
         "Create city sub tables",
         "Truncate city sub tables",
         "Drop city sub tables",
-        //"Insert Avgs into city sub tables",
-        "Insert Means and Avgs into city sub tables",
+        "Insert Medians and Avgs into city sub tables",
         "Exit",
     ];
 
@@ -55,10 +51,7 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
             truncate_sub_tables().await.expect("Failed to truncate city sub tables");
         } else if select == "Drop city sub tables" {
             drop_sub_tables().await.expect("Failed to drop city sub tables");
-        //} else if select == "Insert Avgs into city sub tables" {
-         //   insert_averages().await.expect("Failed to insert averages into city sub tables");
-        } else if select == "Insert Means and Avgs into city sub tables" {
-            //println!("Inserting means and averages into city sub tables...UNDER CONSTRUCTION");
+        } else if select == "Insert Medians and Avgs into city sub tables" {
             insert_medians_and_avgs().await.expect("Failed to insert means and averages into city sub tables");
         } else
         if select == "Exit" {
@@ -203,33 +196,6 @@ async fn drop_city_sub_tables(city: &str) -> Result<(), sqlx::Error>{
     Ok(())
 }
 
-/*async fn insert_averages() -> Result<(), sqlx::Error> {
-    let selected_cities = select_cities("Please select the cities to CALC Averages for".to_string()).await;
-    for the_city in selected_cities {
-        println!("Calculatng sub tables for city of {0}", the_city.clone().red());
-
-        let  first_year: i32 = get_1st_year(&the_city).await;
-        let last_year: i32 = get_end_year(&the_city).await;
-        println!("From {} to {}", first_year, last_year);
-
-        let month_city = the_city.clone();
-        let month_calc = tokio::spawn( async move {calc_city_month(&month_city, first_year, last_year).await});   
-
-        let fort_city = the_city.clone();
-        let fort_calc = tokio::spawn(async move {calc_city_fort(&fort_city, first_year, last_year).await});   
-
-        let week_city = the_city.clone(); 
-        let week_calc = tokio::spawn(async move {calc_city_week(&week_city, first_year, last_year).await});    
-
-        let _week_result = week_calc.await;
-        let _fort_result = fort_calc.await;
-        let _month_result = month_calc.await;
-
-    }
-
-    Ok(())
-}
-*/
 #[derive(Debug, FromRow, Clone)]
 struct DailyTemps {
     station: String,
@@ -295,6 +261,7 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
             let mhigh: i32 = mtemps.iter()
                 .filter_map(|&temp| {
                     if let Some(tmax) = temp.tmax {
+                        // test for 333 and then continue iter() if found?
                         highs.push(tmax);
                         Some(tmax)
                     } else {
@@ -305,6 +272,7 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
             let mlow: i32 = mtemps.iter()
                 .filter_map(|&temp| {
                     if let Some(tmin) = temp.tmin {
+                        // test for 222 and then continue iter() if found?
                         lows.push(tmin);
                         Some(tmin)
                     } else {
@@ -312,7 +280,7 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
                     }
                 })
                 .sum();   
-            let mut mhigh_median: f32 = 333.0;
+            let mut mhigh_median: f32 = 555.0;
             let mut mlow_median: f32 = 444.0;
             if highs.len() > 0 {
                 mhigh_median = median(&highs).unwrap();
@@ -469,7 +437,7 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
                     }
                 })
                 .sum();   
-            let mut mhigh_median: f32 = 333.0;
+            let mut mhigh_median: f32 = 555.0;
             let mut mlow_median: f32 = 444.0;
             if highs.len() > 0 {
                 mhigh_median = median(&highs).unwrap();
@@ -510,94 +478,6 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
         .await;    
     Ok(())
 }
-/*async fn calc_city_month(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
-    let city_sub_month = format!("{city}_month");
-    println!("Starting monthly calcs for {first_year} thru {last_year}");
-    io::stdout().flush().unwrap(); // force flush now
-
-    for the_year in first_year..=last_year {
-        for the_month in 1..=12 {
-            let insert_month = format!("INSERT INTO {city_sub_month} (station, tyear, tmonth, tmax, tmin) VALUES 
-((SELECT station from {city} WHERE tdate LIKE '{the_year}-{the_month:02}%' LIMIT 1),
- {the_year}, 
- {the_month}, 
- round((select avg(tmax) from {city} WHERE tdate LIKE '{the_year}-{the_month:02}%')), 
- round((select avg(tmin) from {city} WHERE tdate LIKE '{the_year}-{the_month:02}%')) );");
-            let _result = sqlx::query(&insert_month)
-                .execute(DB_POOL.get().expect("Database pool not initialized"))
-                .await?;
-        }
-    }
-    println!("Finished monthly calcs for {first_year} thru {last_year}");
-    io::stdout().flush().unwrap(); // force flush now
-    Ok(())
-}
-//WARNING: this fn doesn't calc correctly because BETWEEN low_date and high_date is INCLUSIVE so high_date is included.
-async fn calc_city_fort(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
-    let city_sub_fort = format!("{city}_fort"); 
-    println!("Starting fortnightly calcs for {first_year} thru {last_year}");
-    io::stdout().flush().unwrap(); // force flush now
-
-    for the_year in first_year..=last_year {
-        let mut low_fort = String::from("01-01");
-        for the_fort in 1..=26 {
-            let high_fort = get_next_fort(the_fort-1);
-            let low_date = format!("{}-{}", the_year, low_fort);
-            let high_date = format!("{}-{}", the_year, high_fort);
-
-            let insert_fort = format!("INSERT INTO {city_sub_fort} (station, tyear, tfort, tmax, tmin) VALUES 
-((SELECT station from {city} WHERE tdate BETWEEN '{low_date}' AND '{high_date}' LIMIT 1),
- {the_year}, 
- {the_fort}, 
- round((select avg(tmax) from {city} WHERE tdate BETWEEN '{low_date}' AND '{high_date}')), 
- round((select avg(tmin) from {city} WHERE tdate BETWEEN '{low_date}' AND '{high_date}')) );");
-            let _result = sqlx::query(&insert_fort)
-                .execute(DB_POOL.get().expect("Database pool not initialized"))
-                .await?;
-            low_fort = high_fort; //update low fort for next loop
-        }
-    }
-    println!("Finished fortnight calcs for {first_year} thru {last_year}");
-    io::stdout().flush().unwrap(); // force flush now
-    Ok(())
-}
-//WARNING: this fn doesn't calc correctly because BETWEEN low_date and high_date is INCLUSIVE so high_date is include.
-async fn calc_city_week(city: &str, first_year: i32, last_year: i32) -> Result<(), sqlx::Error> {
-    let city_sub_week = format!("{city}_week"); 
-    println!("Starting weekly calcs for {first_year} thru {last_year}");
-    io::stdout().flush().unwrap(); // force flush now
-
-    for the_year in first_year..=last_year {
-        let mut low_week = String::from("01-01");
-        for the_week in 1..=52 {
-            let high_week = get_next_week(the_week-1);
-            let low_date= format!("{}-{}", the_year, low_week);
-            let high_date= format!("{}-{}", the_year, high_week);
-        
-           let insert_week = format!("INSERT INTO {city_sub_week} (station, tyear, tweek, tmax, tmin) VALUES 
-((SELECT station from {city} WHERE tdate BETWEEN '{low_date}' AND '{high_date}' LIMIT 1),
- {the_year}, 
- {the_week}, 
- round((select avg(tmax) from {city} WHERE tdate BETWEEN '{low_date}' AND '{high_date}')), 
- round((select avg(tmin) from {city} WHERE tdate BETWEEN '{low_date}' AND '{high_date}')) );");
-            let _result = sqlx::query(&insert_week)
-                .execute(DB_POOL.get().expect("Database pool not initialized"))
-                .await?;
-            low_week = high_week;            
-        }
-    }
-    println!("Starting weekly calcs for {first_year} thru {last_year}");
-    io::stdout().flush().unwrap(); // force flush now
-    Ok(())
-}
-*/
-/*async fn get_first_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
-    let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate asc limit 1");
-    let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
-        .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
-        .await?; 
-    Ok(rows)
-}*/
 async fn get_1st_year(city: &str) -> i32{
     let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate asc limit 1");
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
@@ -613,13 +493,6 @@ async fn get_1st_year(city: &str) -> i32{
         }
     }
 }
-/*async fn get_last_year(city: &str) -> Result<Vec<MySqlRow>, sqlx::Error> {
-    let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate desc limit 1");
-    let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
-        .fetch_all(DB_POOL.get().expect("Database pool not initialized"))
-        .await?; // had to make this function return a Result to use the ? operator
-    Ok(rows)
-}*/
 async fn get_end_year(city: &str) -> i32 {
     let query_stmt_string = format!("SELECT tdate FROM {city} order by tdate desc limit 1");
     let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&query_stmt_string)
