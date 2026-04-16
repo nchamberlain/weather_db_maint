@@ -301,8 +301,8 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
                 mlow_avg = 222; 
             }
 
-            println!("week {}:mhigh sum: {}, mhigh.len(): {}", the_month, mhigh, highs.len());
-            println!("week {}:mlow sum: {}, mlow.len(): {}", the_month, mlow, lows.len());
+            //println!("week {}:mhigh sum: {}, mhigh.len(): {}", the_month, mhigh, highs.len());
+            //println!("week {}:mlow sum: {}, mlow.len(): {}", the_month, mlow, lows.len());
             cmtemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
@@ -392,10 +392,8 @@ async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
                 mlow_median = 444.0;
                 mlow_avg = 222; 
             }
-
-            println!("fort {}:mhigh sum: {}, mhigh.len(): {}", the_fort, mhigh, highs.len());
-            println!("fort {}:mlow sum: {}, mlow.len(): {}", the_fort, mlow, lows.len());
-
+            //println!("fort {}:mhigh sum: {}, mhigh.len(): {}", the_fort, mhigh, highs.len());
+            //println!("fort {}:mlow sum: {}, mlow.len(): {}", the_fort, mlow, lows.len());
             cftemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
@@ -489,9 +487,8 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
                 mlow_median = 444.0;
                 mlow_avg = 222; 
             }
-
-            println!("week {}:mhigh sum: {}, mhigh.len(): {}", the_week, mhigh, highs.len());
-            println!("week {}:mlow sum: {}, mlow.len(): {}", the_week, mlow, lows.len());
+            //println!("week {}:mhigh sum: {}, mhigh.len(): {}", the_week, mhigh, highs.len());
+            //println!("week {}:mlow sum: {}, mlow.len(): {}", the_week, mlow, lows.len());
             cwtemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
