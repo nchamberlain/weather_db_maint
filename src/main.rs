@@ -45,16 +45,20 @@ async fn get_user_choice() -> Result<(), sqlx::Error>{
 
         if select == "List all cities" {
             list_all_cities().await.expect("Failed to list all cities");
-        } else if select == "Create city sub tables" {
+        } 
+        else if select == "Create city sub tables" {
             create_sub_tables().await.expect("Failed to create city sub tables");
-        } else if select == "Truncate city sub tables" {
+        } 
+        else if select == "Truncate city sub tables" {
             truncate_sub_tables().await.expect("Failed to truncate city sub tables");
-        } else if select == "Drop city sub tables" {
+        } 
+        else if select == "Drop city sub tables" {
             drop_sub_tables().await.expect("Failed to drop city sub tables");
-        } else if select == "Insert Medians and Avgs into city sub tables" {
+        } 
+        else if select == "Insert Medians and Avgs into city sub tables" {
             insert_medians_and_avgs().await.expect("Failed to insert means and averages into city sub tables");
-        } else
-        if select == "Exit" {
+        } 
+        else if select == "Exit" {
             println!("Exiting the program. Goodbye!");
             break;
         }
@@ -261,7 +265,6 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
             let mhigh: i32 = mtemps.iter()
                 .filter_map(|&temp| {
                     if let Some(tmax) = temp.tmax {
-                        // test for 333 and then continue iter() if found?
                         highs.push(tmax);
                         Some(tmax)
                     } else {
@@ -272,7 +275,6 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
             let mlow: i32 = mtemps.iter()
                 .filter_map(|&temp| {
                     if let Some(tmin) = temp.tmin {
-                        // test for 222 and then continue iter() if found?
                         lows.push(tmin);
                         Some(tmin)
                     } else {
@@ -280,22 +282,35 @@ async fn insert_monthly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year
                     }
                 })
                 .sum();   
-            let mut mhigh_median: f32 = 555.0;
-            let mut mlow_median: f32 = 444.0;
+            let mhigh_median: f32;
+            let mhigh_avg: i32;
+            let mlow_median: f32;
+            let mlow_avg: i32;
             if highs.len() > 0 {
                 mhigh_median = median(&highs).unwrap();
+                mhigh_avg = (mhigh as f32 / highs.len() as f32).round() as i32;
+            } else {
+                mhigh_median = 555.0;
+                mhigh_avg = 333;
             }
             if lows.len() > 0 {
                 mlow_median = median(&lows).unwrap();
+                mlow_avg = (mlow as f32 / lows.len() as f32).round() as i32;
+            } else {
+                mlow_median = 444.0;
+                mlow_avg = 222; 
             }
+
+            println!("week {}:mhigh sum: {}, mhigh.len(): {}", the_month, mhigh, highs.len());
+            println!("week {}:mlow sum: {}, mlow.len(): {}", the_month, mlow, lows.len());
             cmtemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
                 tperiod: the_month,
-                tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
-                tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
-                mmax: mhigh_median as i32,
-                mmin: mlow_median as i32,
+                tmax: mhigh_avg,
+                tmin: mlow_avg,
+                mmax: mhigh_median.round() as i32,
+                mmin: mlow_median.round() as i32,
             });
         } else {
             cmtemps.push(CalculatedTemps {
@@ -337,7 +352,7 @@ async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
             .filter(|&fort| fort.tdate.as_ref().unwrap() >= &low_date && fort.tdate.as_ref().unwrap() < &high_date)
             .clone()
             .collect();
-        if mtemps.len() > 0 {
+        if mtemps.len() > 0 { //if any temps were collected, including nulls
             let mhigh: i32 = mtemps.iter()
                 .filter_map(|&temp| {
                     if let Some(tmax) = temp.tmax {
@@ -358,22 +373,37 @@ async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
                     }
                 })
                 .sum();   
-            let mut mhigh_median: f32 = 555.0;
-            let mut mlow_median: f32 = 444.0;
+
+            let mhigh_median: f32;
+            let mhigh_avg: i32;
+            let mlow_median: f32;
+            let mlow_avg: i32;
             if highs.len() > 0 {
                 mhigh_median = median(&highs).unwrap();
+                mhigh_avg = (mhigh as f32 / highs.len() as f32).round() as i32;
+            } else {
+                mhigh_median = 555.0;
+                mhigh_avg = 333;
             }
             if lows.len() > 0 {
                 mlow_median = median(&lows).unwrap();
+                mlow_avg = (mlow as f32 / lows.len() as f32).round() as i32;
+            } else {
+                mlow_median = 444.0;
+                mlow_avg = 222; 
             }
+
+            println!("fort {}:mhigh sum: {}, mhigh.len(): {}", the_fort, mhigh, highs.len());
+            println!("fort {}:mlow sum: {}, mlow.len(): {}", the_fort, mlow, lows.len());
+
             cftemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
                 tperiod: the_fort,
-                tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
-                tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
-                mmax: mhigh_median as i32,
-                mmin: mlow_median as i32,
+                tmax: mhigh_avg,
+                tmin: mlow_avg,
+                mmax: mhigh_median.round() as i32,
+                mmin: mlow_median.round() as i32,
             });
         } else {
             cftemps.push(CalculatedTemps {
@@ -390,7 +420,8 @@ async fn insert_fortly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
     } // end of the_month loop
     let mut insert_string = " ".to_string();
     for c in cftemps {
-        insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
+        insert_string.push_str(format!("('{}',{},{},{},{},{},{}),", c.station, 
+        c.tyear, c.tperiod, c.tmax, c.tmin, c.mmax, c.mmin).as_str());
     }
     //create a bulk insert statement
     let insert_stmt = format!("INSERT INTO {}_fort (station, tyear, tfort, tmax, tmin, mmax, mmin) VALUES {};", the_city, insert_string.trim_end_matches(','));
@@ -416,13 +447,14 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
             .filter(|&week| week.tdate.as_ref().unwrap() >= &low_date && week.tdate.as_ref().unwrap() < &high_date)
             .clone()
             .collect();
-        if mtemps.len() > 0 {
+        if mtemps.len() > 0 {  // if any temps were collected, including nulls
             let mhigh: i32 = mtemps.iter()
                 .filter_map(|&temp| {
                     if let Some(tmax) = temp.tmax {
                         highs.push(tmax);
                         Some(tmax)
                     } else {
+                        //println!("Null tmax found for station {}, date {}", temp.station, temp.tdate.as_ref().unwrap());
                         None
                     }
                 })
@@ -433,26 +465,41 @@ async fn insert_weekly_medians_and_avgs(daily_temps: &Vec<DailyTemps>, the_year:
                         lows.push(tmin);
                         Some(tmin)
                     } else {
+                        //println!("Null tmin found for station {}, date {}", temp.station, temp.tdate.as_ref().unwrap());
                         None
                     }
                 })
                 .sum();   
-            let mut mhigh_median: f32 = 555.0;
-            let mut mlow_median: f32 = 444.0;
+
+            let mhigh_median: f32;
+            let mhigh_avg: i32;
+            let mlow_median: f32;
+            let mlow_avg: i32;
             if highs.len() > 0 {
                 mhigh_median = median(&highs).unwrap();
+                mhigh_avg = (mhigh as f32 / highs.len() as f32).round() as i32;
+            } else {
+                mhigh_median = 555.0;
+                mhigh_avg = 333;
             }
             if lows.len() > 0 {
                 mlow_median = median(&lows).unwrap();
+                mlow_avg = (mlow as f32 / lows.len() as f32).round() as i32;
+            } else {
+                mlow_median = 444.0;
+                mlow_avg = 222; 
             }
+
+            println!("week {}:mhigh sum: {}, mhigh.len(): {}", the_week, mhigh, highs.len());
+            println!("week {}:mlow sum: {}, mlow.len(): {}", the_week, mlow, lows.len());
             cwtemps.push(CalculatedTemps {
                 station: mtemps[0].station.clone(),
                 tyear: the_year,
                 tperiod: the_week,
-                tmax: (mhigh as f32 / mtemps.len() as f32).round() as i32,
-                tmin: (mlow as f32 / mtemps.len() as f32).round() as i32,
-                mmax: mhigh_median as i32,
-                mmin: mlow_median as i32,
+                tmax: mhigh_avg,
+                tmin: mlow_avg,
+                mmax: mhigh_median.round() as i32,
+                mmin: mlow_median.round() as i32,
             });
         } else {
             cwtemps.push(CalculatedTemps {
